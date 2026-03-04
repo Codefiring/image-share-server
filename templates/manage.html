@@ -28,10 +28,17 @@
                             {% if image.visibility == 'private' %}🔒 Private{% else %}🌐 Public{% endif %}
                             {% if image.one_time %}| ⏱️ One-time{% endif %}
                             {% if image.view_count > 0 %}| 👁️ {{ image.view_count }} views{% endif %}
+                            {% if image.active %}| ✅ Active{% else %}| ❌ Inactive{% endif %}
                         </p>
+                        <div class="share-link-display">
+                            <input type="text" class="share-url" value="{{ request.host_url }}view/{{ image.share_token }}" readonly>
+                            <button onclick="copyShareLink(this)" class="copy-btn">Copy</button>
+                        </div>
                     </div>
                     <div class="image-actions">
-                        <button onclick="shareImage('{{ image.share_token }}')">Share</button>
+                        <button onclick="toggleActive({{ image.id }}, {{ image.active }})">
+                            {% if image.active %}Disable{% else %}Enable{% endif %}
+                        </button>
                         <button onclick="toggleVisibility({{ image.id }}, '{{ image.visibility }}')">Visibility</button>
                         <button onclick="toggleOneTime({{ image.id }}, {{ image.one_time }})">One-time</button>
                         <button onclick="deleteImage({{ image.id }})" class="delete">Delete</button>
@@ -47,10 +54,35 @@
     </div>
 
     <script>
-        function shareImage(token) {
-            const url = window.location.origin + '/view/' + token;
-            navigator.clipboard.writeText(url);
-            alert('Share link copied to clipboard!');
+        function copyShareLink(button) {
+            const input = button.previousElementSibling;
+            const url = input.value;
+
+            // Fallback method for copying (works without HTTPS)
+            input.select();
+            input.setSelectionRange(0, 99999); // For mobile devices
+
+            try {
+                document.execCommand('copy');
+                const originalText = button.textContent;
+                button.textContent = 'Copied!';
+                button.style.background = '#4caf50';
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = '';
+                }, 2000);
+            } catch (err) {
+                alert('Failed to copy link. Please copy manually: ' + url);
+            }
+        }
+
+        function toggleActive(imageId, currentActive) {
+            const active = !currentActive;
+            fetch(`/api/images/${imageId}/toggle-active`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({active: active})
+            }).then(() => location.reload());
         }
 
         function toggleVisibility(imageId, currentVisibility) {

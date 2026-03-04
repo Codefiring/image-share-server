@@ -144,6 +144,37 @@ main {
     margin: 4px 0;
 }
 
+.share-link-display {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.share-link-display .share-url {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 11px;
+    background: white;
+}
+
+.share-link-display .copy-btn {
+    padding: 8px 12px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    transition: background 0.3s;
+}
+
+.share-link-display .copy-btn:hover {
+    background: #764ba2;
+}
+
 .image-actions {
     display: flex;
     flex-wrap: wrap;

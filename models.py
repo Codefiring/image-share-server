@@ -20,10 +20,18 @@ def init_db():
             visibility TEXT DEFAULT 'public',
             allowed_ips TEXT,
             one_time INTEGER DEFAULT 0,
-            view_count INTEGER DEFAULT 0
+            view_count INTEGER DEFAULT 0,
+            active INTEGER DEFAULT 1
         )
     ''')
-    conn.commit()
+
+    # Add active column if it doesn't exist (for existing databases)
+    try:
+        conn.execute('SELECT active FROM images LIMIT 1')
+    except sqlite3.OperationalError:
+        conn.execute('ALTER TABLE images ADD COLUMN active INTEGER DEFAULT 1')
+        conn.commit()
+
     conn.close()
 
 def create_image(filename, owner_ip):

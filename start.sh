@@ -15,6 +15,7 @@ source venv/bin/activate
 
 # Install dependencies
 echo "Installing dependencies..."
+pip install --upgrade pip
 pip install -q -r requirements.txt
 
 # Run the server
