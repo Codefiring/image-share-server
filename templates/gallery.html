@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Share - Public Gallery</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Image Share</h1>
+            <nav>
+                <a href="/">Upload</a>
+                <a href="/gallery">Gallery</a>
+                <a href="/manage">My Images</a>
+            </nav>
+        </header>
+
+        <main>
+            <h2>Public Gallery</h2>
+            <p class="gallery-description">All public images shared on this server</p>
+
+            <div class="images-grid">
+                {% for image in images %}
+                <div class="gallery-card">
+                    <a href="{{ url_for('view_image', token=image.share_token) }}" target="_blank">
+                        <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="Image">
+                    </a>
+                    <div class="gallery-info">
+                        <p class="upload-time">{{ image.upload_time }}</p>
+                        <p class="view-stats">
+                            👁️ {{ image.view_count }} views
+                            {% if image.one_time %}| ⏱️ One-time{% endif %}
+                        </p>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if not images %}
+            <p class="no-images">No public images available yet.</p>
+            {% endif %}
+        </main>
+    </div>
+</body>
+</html>

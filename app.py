@@ -39,6 +39,16 @@ def manage():
     conn.close()
     return render_template('manage.html', images=images)
 
+@app.route('/gallery')
+def gallery():
+    conn = get_db()
+    images = conn.execute(
+        'SELECT * FROM images WHERE visibility = ? AND active = 1 ORDER BY upload_time DESC',
+        ('public',)
+    ).fetchall()
+    conn.close()
+    return render_template('gallery.html', images=images)
+
 @app.route('/upload', methods=['POST'])
 def upload():
     client_ip = get_client_ip()
