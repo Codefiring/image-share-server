@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Share - Manage</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Image Share</h1>
+            <nav>
+                <a href="/">Upload</a>
+                <a href="/manage">My Images</a>
+            </nav>
+        </header>
+
+        <main>
+            <h2>My Images</h2>
+            <div class="images-grid">
+                {% for image in images %}
+                <div class="image-card" data-id="{{ image.id }}">
+                    <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="Image">
+                    <div class="image-info">
+                        <p class="upload-time">{{ image.upload_time }}</p>
+                        <p class="status">
+                            {% if image.visibility == 'private' %}🔒 Private{% else %}🌐 Public{% endif %}
+                            {% if image.one_time %}| ⏱️ One-time{% endif %}
+                            {% if image.view_count > 0 %}| 👁️ {{ image.view_count }} views{% endif %}
+                        </p>
+                    </div>
+                    <div class="image-actions">
+                        <button onclick="shareImage('{{ image.share_token }}')">Share</button>
+                        <button onclick="toggleVisibility({{ image.id }}, '{{ image.visibility }}')">Visibility</button>
+                        <button onclick="toggleOneTime({{ image.id }}, {{ image.one_time }})">One-time</button>
+                        <button onclick="deleteImage({{ image.id }})" class="delete">Delete</button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if not images %}
+            <p class="no-images">No images uploaded yet. <a href="/">Upload one now!</a></p>
+            {% endif %}
+        </main>
+    </div>
+
+    <script>
+        function shareImage(token) {
+            const url = window.location.origin + '/view/' + token;
+            navigator.clipboard.writeText(url);
+            alert('Share link copied to clipboard!');
+        }
+
+        function toggleVisibility(imageId, currentVisibility) {
+            const newVisibility = currentVisibility === 'public' ? 'private' : 'public';
+            let allowedIps = '';
+
+            if (newVisibility === 'private') {
+                allowedIps = prompt('Enter allowed IPs (comma-separated):');
+                if (allowedIps === null) return;
+            }
+
+            fetch(`/api/images/${imageId}/visibility`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({visibility: newVisibility, allowed_ips: allowedIps})
+            }).then(() => location.reload());
+        }
+
+        function toggleOneTime(imageId, currentOneTime) {
+            const oneTime = !currentOneTime;
+            fetch(`/api/images/${imageId}/one-time`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({one_time: oneTime})
+            }).then(() => location.reload());
+        }
+
+        function deleteImage(imageId) {
+            if (!confirm('Are you sure you want to delete this image?')) return;
+
+            fetch(`/api/images/${imageId}`, {
+                method: 'DELETE'
+            }).then(() => location.reload());
+        }
+    </script>
+</body>
+</html>

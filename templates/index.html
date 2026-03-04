@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Share - Upload</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Image Share</h1>
+            <nav>
+                <a href="/">Upload</a>
+                <a href="/manage">My Images</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📋</div>
+                <h2>Press Ctrl+V to paste image</h2>
+                <p>or click to select a file</p>
+                <input type="file" id="fileInput" accept="image/*" style="display: none;">
+            </div>
+
+            <div id="result" class="result hidden">
+                <h3>Image uploaded successfully!</h3>
+                <div class="share-link">
+                    <input type="text" id="shareUrl" readonly>
+                    <button onclick="copyLink()">Copy Link</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
