@@ -1,93 +1,89 @@
 # Image Share Server
 
-A local network image sharing service with clipboard upload support.
+A Flask-based local network image sharing service designed for LAN environments. Share images with flexible access control including IP whitelisting, blacklisting, and timer-based expiration.
 
 ## Features
 
-- 📋 Upload images via clipboard (Ctrl+V)
-- 🔗 Generate shareable links
-- 🌐 IP-based user identification
-- 🎛️ Image management (delete, visibility control)
-- ⏱️ One-time share links
-- 🔒 Private sharing with IP whitelist
+- **Clipboard Upload**: Paste images directly from clipboard
+- **Flexible Access Control**:
+  - Public sharing (anyone with link)
+  - IP Whitelist (allow only specific IPs)
+  - IP Blacklist (block specific IPs)
+- **IP Groups**: Create reusable groups of IP addresses
+- **Timer-based Expiration**: Set links to expire after a specified time
+- **Share Link Management**: Enable/disable links without deleting
+- **Public Gallery**: View all public images
+- **IP Nicknames**: Save friendly names for IP addresses
 
 ## Quick Start
 
-### Option 1: Using the startup script (Recommended)
 ```bash
+# Start the server
 ./start.sh
-```
 
-### Option 2: Manual setup
-```bash
-# Create virtual environment
+# Or manually
 python3 -m venv venv
 source venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Run the server
 python app.py
 ```
 
-The server will start at `http://0.0.0.0:5000`
+Server runs at `http://0.0.0.0:5000` (accessible on local network).
 
 ## Usage
 
-1. **Upload**: Open the website, copy an image, press Ctrl+V
-2. **Share**: Copy the generated link and share with others
-3. **Manage**: Visit `/manage` to control your uploaded images
-4. **View**: Anyone with the link can view the image (unless set to private)
+### Upload Images
+1. Go to the home page
+2. Paste an image from clipboard or select a file
+3. Get a shareable link instantly
 
-## Features Details
+### Manage Access Control
+1. Go to "My Images"
+2. Click "Visibility" on any image
+3. Choose access mode:
+   - **Public**: Anyone with link can view
+   - **Private - Allow only selected IPs**: Whitelist mode
+   - **Private - Block selected IPs**: Blacklist mode
 
-### Upload
-- Paste images directly from clipboard
-- Or click to select files
-- Supports: PNG, JPG, JPEG, GIF, BMP, WEBP
+### Create IP Groups
+1. Click "Manage Groups" in the visibility modal
+2. Create groups with multiple IPs (comma-separated)
+3. Click a group to add all IPs at once
 
-### Image Controls
-- **Share**: Generate and copy share link
-- **Visibility**: Toggle between public/private, set allowed IPs for private images
-- **One-time**: Make link expire after first view
-- **Delete**: Remove image permanently
+### Set Expiration Timer
+1. Click "Set Timer" on any image
+2. Enter minutes until expiration
+3. Link becomes invalid after time expires
 
-### Security
-- Users identified by IP address
-- Only owners can manage their images
-- Private images require IP whitelist
-- One-time links auto-expire
+## Architecture
 
-## Project Structure
+- **Backend**: Flask (Python)
+- **Database**: SQLite
+- **Authentication**: IP-based (no user accounts)
+- **File Storage**: Local filesystem
 
-```
-image-share-server/
-├── app.py              # Main Flask application
-├── config.py           # Configuration settings
-├── models.py           # Database models and functions
-├── requirements.txt    # Python dependencies
-├── start.sh           # Startup script
-├── static/
-│   ├── css/style.css  # Styling
-│   └── js/main.js     # Frontend logic
-├── templates/
-│   ├── index.html     # Upload page
-│   ├── manage.html    # Management page
-│   └── view.html      # Image view page
-└── uploads/           # Uploaded images (auto-created)
-```
+## Configuration
 
-## Network Access
+Edit `config.py` to customize:
+- `MAX_CONTENT_LENGTH`: File size limit (default 16MB)
+- `ALLOWED_EXTENSIONS`: Supported image formats
+- `UPLOAD_FOLDER`: Storage directory
+- `DATABASE`: SQLite database filename
 
-The server binds to `0.0.0.0:5000`, making it accessible to all devices on your local network. Find your server's IP address and share it with others:
+## Security Notes
 
-```bash
-# Linux/Mac
-ip addr show | grep inet
+- Designed for trusted local networks
+- No HTTPS/TLS (assumes LAN environment)
+- IP-based identification (no passwords)
+- Share tokens are URL-safe random strings
 
-# Or use hostname
-hostname -I
-```
+## Requirements
 
-Others can access at: `http://YOUR_IP:5000`
+- Python 3.7+
+- Flask
+- Pillow (PIL)
+- SQLite3
+
+## License
+
+MIT License
