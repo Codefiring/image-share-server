@@ -22,9 +22,6 @@
                 <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="Shared Image">
                 <div class="image-meta">
                     <p>Uploaded: {{ image.upload_time }}</p>
-                    {% if image.one_time %}
-                    <p class="warning">⚠️ This is a one-time link. It will expire after this view.</p>
-                    {% endif %}
                 </div>
             </div>
         </main>

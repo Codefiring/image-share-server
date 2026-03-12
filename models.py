@@ -19,7 +19,6 @@ def init_db():
             upload_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             visibility TEXT DEFAULT 'public',
             allowed_ips TEXT,
-            one_time INTEGER DEFAULT 0,
             view_count INTEGER DEFAULT 0,
             active INTEGER DEFAULT 1
         )
@@ -31,6 +30,48 @@ def init_db():
     except sqlite3.OperationalError:
         conn.execute('ALTER TABLE images ADD COLUMN active INTEGER DEFAULT 1')
         conn.commit()
+
+    # Add blocked_ips column if it doesn't exist
+    try:
+        conn.execute('SELECT blocked_ips FROM images LIMIT 1')
+    except sqlite3.OperationalError:
+        conn.execute('ALTER TABLE images ADD COLUMN blocked_ips TEXT')
+        conn.commit()
+
+    # Migrate existing 'private' visibility to 'whitelist'
+    conn.execute("UPDATE images SET visibility = 'whitelist' WHERE visibility = 'private'")
+    conn.commit()
+
+    # Add expires_at column if it doesn't exist
+    try:
+        conn.execute('SELECT expires_at FROM images LIMIT 1')
+    except sqlite3.OperationalError:
+        conn.execute('ALTER TABLE images ADD COLUMN expires_at TIMESTAMP')
+        conn.commit()
+
+    # Create IP nicknames table
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS ip_nicknames (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_ip TEXT NOT NULL,
+            ip_address TEXT NOT NULL,
+            nickname TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(owner_ip, ip_address)
+        )
+    ''')
+
+    # Create IP groups table
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS ip_groups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_ip TEXT NOT NULL,
+            group_name TEXT NOT NULL,
+            ip_addresses TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(owner_ip, group_name)
+        )
+    ''')
 
     conn.close()
 

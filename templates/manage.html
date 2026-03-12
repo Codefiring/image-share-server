@@ -5,6 +5,168 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Share - Manage</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #000;
+        }
+        .ip-list {
+            margin: 15px 0;
+        }
+        .ip-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+        .ip-info {
+            flex: 1;
+        }
+        .ip-nickname {
+            font-weight: bold;
+            color: #333;
+        }
+        .ip-address {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .remove-btn {
+            background: #f44336;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .remove-btn:hover {
+            background: #d32f2f;
+        }
+        .add-ip-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+        }
+        .input-group {
+            margin: 10px 0;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .saved-ips {
+            margin: 15px 0;
+        }
+        .saved-ip-item {
+            display: inline-block;
+            padding: 5px 10px;
+            margin: 5px;
+            background: #e3f2fd;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .saved-ip-item:hover {
+            background: #bbdefb;
+        }
+        .btn-primary {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .btn-primary:hover {
+            background: #1976D2;
+        }
+        .visibility-toggle {
+            margin: 15px 0;
+        }
+        .group-item {
+            display: inline-block;
+            padding: 5px 10px;
+            margin: 5px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .group-item:hover {
+            background: #ffe69c;
+        }
+        .manage-groups-btn {
+            background: #ff9800;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+        .manage-groups-btn:hover {
+            background: #f57c00;
+        }
+        .group-list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: #fff3cd;
+            border-radius: 4px;
+        }
+        .group-actions button {
+            margin-left: 5px;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -26,8 +188,8 @@
                     <div class="image-info">
                         <p class="upload-time">{{ image.upload_time }}</p>
                         <p class="status">
-                            {% if image.visibility == 'private' %}🔒 Private{% else %}🌐 Public{% endif %}
-                            {% if image.one_time %}| ⏱️ One-time{% endif %}
+                            {% if image.visibility == 'whitelist' or image.visibility == 'private' %}🔒 Private (Allow List){% elif image.visibility == 'blacklist' %}🔒 Private (Block List){% else %}🌐 Public{% endif %}
+                            {% if image.expires_at %}| ⏱️ Expires: {{ image.expires_at }}{% endif %}
                             {% if image.view_count > 0 %}| 👁️ {{ image.view_count }} views{% endif %}
                             {% if image.active %}| ✅ Active{% else %}| ❌ Inactive{% endif %}
                         </p>
@@ -41,7 +203,7 @@
                             {% if image.active %}Disable{% else %}Enable{% endif %}
                         </button>
                         <button onclick="toggleVisibility({{ image.id }}, '{{ image.visibility }}')">Visibility</button>
-                        <button onclick="toggleOneTime({{ image.id }}, {{ image.one_time }})">One-time</button>
+                        <button onclick="setExpiration({{ image.id }})">Set Timer</button>
                         <button onclick="deleteImage({{ image.id }})" class="delete">Delete</button>
                     </div>
                 </div>
@@ -54,14 +216,165 @@
         </main>
     </div>
 
+    <!-- IP Management Modal -->
+    <div id="ipModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Manage Access Control</h2>
+                <span class="close" onclick="closeIpModal()">&times;</span>
+            </div>
+
+            <div class="visibility-toggle">
+                <label>
+                    <input type="radio" name="visibility" value="public" onchange="updateVisibilityMode()"> Public (anyone with link)
+                </label>
+                <label>
+                    <input type="radio" name="visibility" value="whitelist" onchange="updateVisibilityMode()"> Private - Allow only selected IPs
+                </label>
+                <label>
+                    <input type="radio" name="visibility" value="blacklist" onchange="updateVisibilityMode()"> Private - Block selected IPs
+                </label>
+            </div>
+
+            <div id="whitelistSection" style="display: none;">
+                <h3>Allowed IPs</h3>
+                <p style="color: #666; font-size: 0.9em;">Only these IPs (and you) can view the image.</p>
+                <div id="allowedIpsList" class="ip-list"></div>
+
+                <div class="add-ip-section">
+                    <h4>Add IP Address or Group</h4>
+
+                    <div id="groupsListAllow" style="margin: 10px 0;"></div>
+
+                    <div class="saved-ips" id="savedIpsListAllow"></div>
+
+                    <div class="input-group">
+                        <label>IP Address:</label>
+                        <input type="text" id="newIpAddressAllow" placeholder="e.g., 192.168.1.100">
+                    </div>
+                    <div class="input-group">
+                        <label>Nickname (optional):</label>
+                        <input type="text" id="newIpNicknameAllow" placeholder="e.g., John's Phone">
+                    </div>
+                    <button class="btn-primary" onclick="addIpToAllowList()">Add IP</button>
+                    <button class="manage-groups-btn" onclick="openGroupManager()">Manage Groups</button>
+                </div>
+            </div>
+
+            <div id="blacklistSection" style="display: none;">
+                <h3>Blocked IPs</h3>
+                <p style="color: #666; font-size: 0.9em;">Everyone except these IPs can view the image. You always have access.</p>
+                <div id="blockedIpsList" class="ip-list"></div>
+
+                <div class="add-ip-section">
+                    <h4>Add IP Address or Group</h4>
+
+                    <div id="groupsListBlock" style="margin: 10px 0;"></div>
+
+                    <div class="saved-ips" id="savedIpsListBlock"></div>
+
+                    <div class="input-group">
+                        <label>IP Address:</label>
+                        <input type="text" id="newIpAddressBlock" placeholder="e.g., 192.168.1.100">
+                    </div>
+                    <div class="input-group">
+                        <label>Nickname (optional):</label>
+                        <input type="text" id="newIpNicknameBlock" placeholder="e.g., John's Phone">
+                    </div>
+                    <button class="btn-primary" onclick="addIpToBlockList()">Add IP</button>
+                    <button class="manage-groups-btn" onclick="openGroupManager()">Manage Groups</button>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; text-align: right;">
+                <button class="btn-primary" onclick="saveIpSettings()">Save Changes</button>
+                <button onclick="closeIpModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Group Manager Modal -->
+    <div id="groupModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Manage IP Groups</h2>
+                <span class="close" onclick="closeGroupModal()">&times;</span>
+            </div>
+
+            <div id="groupsList"></div>
+
+            <div class="add-ip-section">
+                <h4 id="groupFormTitle">Create New Group</h4>
+                <input type="hidden" id="editingGroupId" value="">
+                <div class="input-group">
+                    <label>Group Name:</label>
+                    <input type="text" id="newGroupName" placeholder="e.g., Family Devices">
+                </div>
+                <div class="input-group">
+                    <label>IP Addresses (comma-separated):</label>
+                    <textarea id="newGroupIps" placeholder="e.g., 192.168.1.100, 192.168.1.101" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;"></textarea>
+                </div>
+                <button class="btn-primary" onclick="saveGroup()" id="saveGroupBtn">Create Group</button>
+                <button onclick="cancelEditGroup()" id="cancelEditBtn" style="display: none;">Cancel</button>
+            </div>
+
+            <div style="margin-top: 20px; text-align: right;">
+                <button onclick="closeGroupModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Expiration Timer Modal -->
+    <div id="expirationModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Set Link Expiration</h2>
+                <span class="close" onclick="closeExpirationModal()">&times;</span>
+            </div>
+
+            <div id="currentExpirationStatus" style="margin-bottom: 20px;"></div>
+
+            <p style="color: #666; margin-bottom: 15px;">Set how long the link will remain valid. After expiration, the link will no longer work.</p>
+
+            <div class="input-group">
+                <label>Expiration Time (minutes):</label>
+                <input type="number" id="expirationMinutes" placeholder="e.g., 5, 30, 60" min="1">
+            </div>
+
+            <div style="margin-top: 20px; text-align: right;">
+                <button class="btn-primary" onclick="saveExpiration()">Set Timer</button>
+                <button onclick="removeExpiration()" style="background: #ff9800; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Remove Timer</button>
+                <button onclick="closeExpirationModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        let currentImageId = null;
+        let currentAllowedIps = [];
+        let currentBlockedIps = [];
+        let savedIpNicknames = [];
+        let ipGroups = [];
+
+        // Load saved IP nicknames and groups on page load
+        fetch('/api/ip-nicknames')
+            .then(res => res.json())
+            .then(data => {
+                savedIpNicknames = data;
+            });
+
+        fetch('/api/ip-groups')
+            .then(res => res.json())
+            .then(data => {
+                ipGroups = data;
+            });
+
         function copyShareLink(button) {
             const input = button.previousElementSibling;
             const url = input.value;
 
-            // Fallback method for copying (works without HTTPS)
             input.select();
-            input.setSelectionRange(0, 99999); // For mobile devices
+            input.setSelectionRange(0, 99999);
 
             try {
                 document.execCommand('copy');
@@ -87,28 +400,532 @@
         }
 
         function toggleVisibility(imageId, currentVisibility) {
-            const newVisibility = currentVisibility === 'public' ? 'private' : 'public';
-            let allowedIps = '';
+            currentImageId = imageId;
 
-            if (newVisibility === 'private') {
-                allowedIps = prompt('Enter allowed IPs (comma-separated):');
-                if (allowedIps === null) return;
-            }
+            // Load current settings
+            fetch(`/api/images/${imageId}/allowed-ips`)
+                .then(res => res.json())
+                .then(data => {
+                    currentAllowedIps = data.allowed_ips || [];
+                    currentBlockedIps = data.blocked_ips || [];
 
-            fetch(`/api/images/${imageId}/visibility`, {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({visibility: newVisibility, allowed_ips: allowedIps})
-            }).then(() => location.reload());
+                    // Set visibility radio buttons (handle legacy 'private' as 'whitelist')
+                    const visibility = data.visibility === 'private' ? 'whitelist' : data.visibility;
+                    document.querySelector(`input[name="visibility"][value="${visibility}"]`).checked = true;
+                    updateVisibilityMode();
+
+                    // Display allowed and blocked IPs
+                    displayAllowedIps();
+                    displayBlockedIps();
+
+                    // Display saved IP nicknames and groups
+                    displaySavedIpsForAllow();
+                    displaySavedIpsForBlock();
+                    displayGroupsForAllow();
+                    displayGroupsForBlock();
+
+                    // Show modal
+                    document.getElementById('ipModal').style.display = 'block';
+                });
         }
 
-        function toggleOneTime(imageId, currentOneTime) {
-            const oneTime = !currentOneTime;
-            fetch(`/api/images/${imageId}/one-time`, {
+        function updateVisibilityMode() {
+            const visibility = document.querySelector('input[name="visibility"]:checked').value;
+            document.getElementById('whitelistSection').style.display = visibility === 'whitelist' || visibility === 'private' ? 'block' : 'none';
+            document.getElementById('blacklistSection').style.display = visibility === 'blacklist' ? 'block' : 'none';
+        }
+
+        function displayAllowedIps() {
+            const list = document.getElementById('allowedIpsList');
+            if (currentAllowedIps.length === 0) {
+                list.innerHTML = '<p style="color: #999;">No IPs added yet</p>';
+                return;
+            }
+
+            list.innerHTML = currentAllowedIps.map((item, index) => `
+                <div class="ip-item">
+                    <div class="ip-info">
+                        <div class="ip-nickname">${item.nickname || 'Unnamed'}</div>
+                        <div class="ip-address">${item.ip}</div>
+                    </div>
+                    <button class="remove-btn" onclick="removeIpFromList(${index})">Remove</button>
+                </div>
+            `).join('');
+        }
+
+        function displaySavedIpsForAllow() {
+            const list = document.getElementById('savedIpsListAllow');
+            if (savedIpNicknames.length === 0) {
+                list.innerHTML = '<p style="color: #999; font-size: 0.9em;">No saved IPs. Add one below to save it for future use.</p>';
+                return;
+            }
+
+            list.innerHTML = '<p style="font-size: 0.9em; margin-bottom: 10px;">Quick add from saved IPs:</p>' +
+                savedIpNicknames.map(item => `
+                    <span class="saved-ip-item" onclick="quickAddIpToAllow('${item.ip_address}', '${item.nickname}')">
+                        ${item.nickname} (${item.ip_address})
+                    </span>
+                `).join('');
+        }
+
+        function displaySavedIpsForBlock() {
+            const list = document.getElementById('savedIpsListBlock');
+            if (savedIpNicknames.length === 0) {
+                list.innerHTML = '<p style="color: #999; font-size: 0.9em;">No saved IPs. Add one below to save it for future use.</p>';
+                return;
+            }
+
+            list.innerHTML = '<p style="font-size: 0.9em; margin-bottom: 10px;">Quick add from saved IPs:</p>' +
+                savedIpNicknames.map(item => `
+                    <span class="saved-ip-item" onclick="quickAddIpToBlock('${item.ip_address}', '${item.nickname}')">
+                        ${item.nickname} (${item.ip_address})
+                    </span>
+                `).join('');
+        }
+
+        function quickAddIpToAllow(ip, nickname) {
+            // Check if already in list
+            if (currentAllowedIps.some(item => item.ip === ip)) {
+                alert('This IP is already in the allowed list');
+                return;
+            }
+
+            currentAllowedIps.push({ip: ip, nickname: nickname});
+            displayAllowedIps();
+        }
+
+        function quickAddIpToBlock(ip, nickname) {
+            // Check if already in list
+            if (currentBlockedIps.some(item => item.ip === ip)) {
+                alert('This IP is already in the blocked list');
+                return;
+            }
+
+            currentBlockedIps.push({ip: ip, nickname: nickname});
+            displayBlockedIps();
+        }
+
+        function displayGroupsForAllow() {
+            const list = document.getElementById('groupsListAllow');
+            if (ipGroups.length === 0) {
+                list.innerHTML = '';
+                return;
+            }
+            list.innerHTML = '<p style="font-size: 0.9em; margin-bottom: 10px;">Quick add from groups:</p>' +
+                ipGroups.map(group => `
+                    <span class="group-item" onclick="addGroupToAllow(${group.id})">
+                        📁 ${group.group_name}
+                    </span>
+                `).join('');
+        }
+
+        function displayGroupsForBlock() {
+            const list = document.getElementById('groupsListBlock');
+            if (ipGroups.length === 0) {
+                list.innerHTML = '';
+                return;
+            }
+            list.innerHTML = '<p style="font-size: 0.9em; margin-bottom: 10px;">Quick add from groups:</p>' +
+                ipGroups.map(group => `
+                    <span class="group-item" onclick="addGroupToBlock(${group.id})">
+                        📁 ${group.group_name}
+                    </span>
+                `).join('');
+        }
+
+        function addGroupToAllow(groupId) {
+            const group = ipGroups.find(g => g.id === groupId);
+            if (!group) return;
+
+            const ips = group.ip_addresses.split(',').map(ip => ip.trim()).filter(ip => ip);
+            ips.forEach(ip => {
+                if (!currentAllowedIps.some(item => item.ip === ip)) {
+                    const nickname = savedIpNicknames.find(n => n.ip_address === ip);
+                    currentAllowedIps.push({ip: ip, nickname: nickname ? nickname.nickname : null});
+                }
+            });
+            displayAllowedIps();
+        }
+
+        function addGroupToBlock(groupId) {
+            const group = ipGroups.find(g => g.id === groupId);
+            if (!group) return;
+
+            const ips = group.ip_addresses.split(',').map(ip => ip.trim()).filter(ip => ip);
+            ips.forEach(ip => {
+                if (!currentBlockedIps.some(item => item.ip === ip)) {
+                    const nickname = savedIpNicknames.find(n => n.ip_address === ip);
+                    currentBlockedIps.push({ip: ip, nickname: nickname ? nickname.nickname : null});
+                }
+            });
+            displayBlockedIps();
+        }
+
+        function openGroupManager() {
+            displayGroupsList();
+            document.getElementById('groupModal').style.display = 'block';
+        }
+
+        function closeGroupModal() {
+            document.getElementById('groupModal').style.display = 'none';
+            cancelEditGroup();
+        }
+
+        function displayGroupsList() {
+            const list = document.getElementById('groupsList');
+            if (ipGroups.length === 0) {
+                list.innerHTML = '<p style="color: #999;">No groups created yet</p>';
+                return;
+            }
+            list.innerHTML = ipGroups.map(group => `
+                <div class="group-list-item">
+                    <div>
+                        <strong>📁 ${group.group_name}</strong><br>
+                        <span style="color: #666; font-size: 0.9em;">${group.ip_addresses}</span>
+                    </div>
+                    <div class="group-actions">
+                        <button onclick="editGroup(${group.id})" style="background: #2196F3; color: white;">Edit</button>
+                        <button onclick="deleteGroup(${group.id})" style="background: #f44336; color: white;">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function editGroup(groupId) {
+            const group = ipGroups.find(g => g.id === groupId);
+            if (!group) return;
+
+            document.getElementById('editingGroupId').value = groupId;
+            document.getElementById('newGroupName').value = group.group_name;
+            document.getElementById('newGroupIps').value = group.ip_addresses;
+            document.getElementById('groupFormTitle').textContent = 'Edit Group';
+            document.getElementById('saveGroupBtn').textContent = 'Update Group';
+            document.getElementById('cancelEditBtn').style.display = 'inline-block';
+        }
+
+        function cancelEditGroup() {
+            document.getElementById('editingGroupId').value = '';
+            document.getElementById('newGroupName').value = '';
+            document.getElementById('newGroupIps').value = '';
+            document.getElementById('groupFormTitle').textContent = 'Create New Group';
+            document.getElementById('saveGroupBtn').textContent = 'Create Group';
+            document.getElementById('cancelEditBtn').style.display = 'none';
+        }
+
+        function saveGroup() {
+            const name = document.getElementById('newGroupName').value.trim();
+            const ips = document.getElementById('newGroupIps').value.trim();
+            const editingId = document.getElementById('editingGroupId').value;
+
+            if (!name || !ips) {
+                alert('Please enter group name and IP addresses');
+                return;
+            }
+
+            if (editingId) {
+                // Update existing group
+                fetch(`/api/ip-groups/${editingId}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({group_name: name, ip_addresses: ips})
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        const group = ipGroups.find(g => g.id == editingId);
+                        if (group) {
+                            group.group_name = name;
+                            group.ip_addresses = ips;
+                        }
+                        displayGroupsList();
+                        displayGroupsForAllow();
+                        displayGroupsForBlock();
+                        cancelEditGroup();
+                    } else {
+                        alert(data.error || 'Failed to update group');
+                    }
+                });
+            } else {
+                // Create new group
+                fetch('/api/ip-groups', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({group_name: name, ip_addresses: ips})
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        ipGroups.push({id: data.id, group_name: name, ip_addresses: ips});
+                        displayGroupsList();
+                        displayGroupsForAllow();
+                        displayGroupsForBlock();
+                        cancelEditGroup();
+                    } else {
+                        alert(data.error || 'Failed to create group');
+                    }
+                });
+            }
+        }
+
+        function deleteGroup(groupId) {
+            if (!confirm('Delete this group?')) return;
+
+            fetch(`/api/ip-groups/${groupId}`, {method: 'DELETE'})
+            .then(() => {
+                ipGroups = ipGroups.filter(g => g.id !== groupId);
+                displayGroupsList();
+                displayGroupsForAllow();
+                displayGroupsForBlock();
+            });
+        }
+
+        function addIpToAllowList() {
+            const ipInput = document.getElementById('newIpAddressAllow');
+            const nicknameInput = document.getElementById('newIpNicknameAllow');
+            const ip = ipInput.value.trim();
+            const nickname = nicknameInput.value.trim();
+
+            if (!ip) {
+                alert('Please enter an IP address');
+                return;
+            }
+
+            // Basic IP validation
+            const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+            if (!ipPattern.test(ip)) {
+                alert('Please enter a valid IP address');
+                return;
+            }
+
+            // Check if already in list
+            if (currentAllowedIps.some(item => item.ip === ip)) {
+                alert('This IP is already in the allowed list');
+                return;
+            }
+
+            // Add to list
+            currentAllowedIps.push({ip: ip, nickname: nickname || null});
+            displayAllowedIps();
+
+            // Save nickname if provided and not already saved
+            if (nickname && !savedIpNicknames.some(item => item.ip_address === ip)) {
+                fetch('/api/ip-nicknames', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ip_address: ip, nickname: nickname})
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        savedIpNicknames.push({id: data.id, ip_address: ip, nickname: nickname});
+                        displaySavedIpsForAllow();
+                        displaySavedIpsForBlock();
+                    }
+                });
+            }
+
+            // Clear inputs
+            ipInput.value = '';
+            nicknameInput.value = '';
+        }
+
+        function displayBlockedIps() {
+            const list = document.getElementById('blockedIpsList');
+            if (currentBlockedIps.length === 0) {
+                list.innerHTML = '<p style="color: #999;">No IPs blocked yet</p>';
+                return;
+            }
+
+            list.innerHTML = currentBlockedIps.map((item, index) => `
+                <div class="ip-item">
+                    <div class="ip-info">
+                        <div class="ip-nickname">${item.nickname || 'Unnamed'}</div>
+                        <div class="ip-address">${item.ip}</div>
+                    </div>
+                    <button class="remove-btn" onclick="removeIpFromBlockList(${index})">Remove</button>
+                </div>
+            `).join('');
+        }
+
+        function addIpToBlockList() {
+            const ipInput = document.getElementById('newIpAddressBlock');
+            const nicknameInput = document.getElementById('newIpNicknameBlock');
+            const ip = ipInput.value.trim();
+            const nickname = nicknameInput.value.trim();
+
+            if (!ip) {
+                alert('Please enter an IP address');
+                return;
+            }
+
+            // Basic IP validation
+            const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+            if (!ipPattern.test(ip)) {
+                alert('Please enter a valid IP address');
+                return;
+            }
+
+            // Check if already in list
+            if (currentBlockedIps.some(item => item.ip === ip)) {
+                alert('This IP is already in the blocked list');
+                return;
+            }
+
+            // Add to list
+            currentBlockedIps.push({ip: ip, nickname: nickname || null});
+            displayBlockedIps();
+
+            // Save nickname if provided and not already saved
+            if (nickname && !savedIpNicknames.some(item => item.ip_address === ip)) {
+                fetch('/api/ip-nicknames', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ip_address: ip, nickname: nickname})
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        savedIpNicknames.push({id: data.id, ip_address: ip, nickname: nickname});
+                        displaySavedIpsForAllow();
+                        displaySavedIpsForBlock();
+                    }
+                });
+            }
+
+            // Clear inputs
+            ipInput.value = '';
+            nicknameInput.value = '';
+        }
+
+        function removeIpFromBlockList(index) {
+            currentBlockedIps.splice(index, 1);
+            displayBlockedIps();
+        }
+
+        function removeIpFromList(index) {
+            currentAllowedIps.splice(index, 1);
+            displayAllowedIps();
+        }
+
+        function saveIpSettings() {
+            const visibility = document.querySelector('input[name="visibility"]:checked').value;
+            const allowedIps = currentAllowedIps.map(item => item.ip).join(',');
+            const blockedIps = currentBlockedIps.map(item => item.ip).join(',');
+
+            fetch(`/api/images/${currentImageId}/visibility`, {
                 method: 'PUT',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({one_time: oneTime})
-            }).then(() => location.reload());
+                body: JSON.stringify({
+                    visibility: visibility,
+                    allowed_ips: allowedIps,
+                    blocked_ips: blockedIps
+                })
+            }).then(() => {
+                closeIpModal();
+                location.reload();
+            });
+        }
+
+        function closeIpModal() {
+            document.getElementById('ipModal').style.display = 'none';
+            currentImageId = null;
+            currentAllowedIps = [];
+            currentBlockedIps = [];
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('ipModal');
+            if (event.target === modal) {
+                closeIpModal();
+            }
+            const expirationModal = document.getElementById('expirationModal');
+            if (event.target === expirationModal) {
+                closeExpirationModal();
+            }
+            const groupModal = document.getElementById('groupModal');
+            if (event.target === groupModal) {
+                closeGroupModal();
+            }
+        }
+
+        function setExpiration(imageId) {
+            currentImageId = imageId;
+            document.getElementById('expirationMinutes').value = '';
+
+            // Load current expiration status
+            fetch(`/api/images/${imageId}/expiration`)
+                .then(res => res.json())
+                .then(data => {
+                    const statusDiv = document.getElementById('currentExpirationStatus');
+                    if (data.expires_at) {
+                        const expiresAt = new Date(data.expires_at);
+                        const now = new Date();
+                        const isExpired = now > expiresAt;
+
+                        if (isExpired) {
+                            statusDiv.innerHTML = `
+                                <div style="padding: 10px; background: #ffebee; border-left: 4px solid #f44336; border-radius: 4px;">
+                                    <strong style="color: #c62828;">⏱️ Link Expired</strong><br>
+                                    <span style="color: #666; font-size: 0.9em;">Expired at: ${expiresAt.toLocaleString()}</span>
+                                </div>
+                            `;
+                        } else {
+                            const timeLeft = Math.ceil((expiresAt - now) / 60000);
+                            statusDiv.innerHTML = `
+                                <div style="padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                                    <strong style="color: #f57c00;">⏱️ Timer Active</strong><br>
+                                    <span style="color: #666; font-size: 0.9em;">Expires at: ${expiresAt.toLocaleString()}</span><br>
+                                    <span style="color: #666; font-size: 0.9em;">Time remaining: ~${timeLeft} minutes</span>
+                                </div>
+                            `;
+                        }
+                    } else {
+                        statusDiv.innerHTML = `
+                            <div style="padding: 10px; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 4px;">
+                                <strong style="color: #2e7d32;">✓ No Expiration</strong><br>
+                                <span style="color: #666; font-size: 0.9em;">Link will remain valid indefinitely</span>
+                            </div>
+                        `;
+                    }
+                    document.getElementById('expirationModal').style.display = 'block';
+                });
+        }
+
+        function closeExpirationModal() {
+            document.getElementById('expirationModal').style.display = 'none';
+            currentImageId = null;
+        }
+
+        function saveExpiration() {
+            const minutes = parseInt(document.getElementById('expirationMinutes').value);
+
+            if (!minutes || minutes < 1) {
+                alert('Please enter a valid number of minutes (minimum 1)');
+                return;
+            }
+
+            fetch(`/api/images/${currentImageId}/expiration`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({minutes: minutes})
+            }).then(() => {
+                closeExpirationModal();
+                location.reload();
+            });
+        }
+
+        function removeExpiration() {
+            if (!confirm('Remove the expiration timer? The link will remain valid indefinitely.')) return;
+
+            fetch(`/api/images/${currentImageId}/expiration`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({minutes: 0})
+            }).then(() => {
+                closeExpirationModal();
+                location.reload();
+            });
         }
 
         function deleteImage(imageId) {

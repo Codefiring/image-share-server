@@ -4,6 +4,8 @@ from werkzeug.utils import secure_filename
 from PIL import Image
 import io
 import base64
+import secrets
+from datetime import datetime, timedelta
 from config import Config
 from models import init_db, create_image, get_image_by_token, get_db
 
@@ -86,17 +88,27 @@ def view_image(token):
     if not image['active']:
         abort(403)
 
+    # Check if link has expired
+    if image['expires_at']:
+        expires_at = datetime.fromisoformat(image['expires_at'])
+        if datetime.now() > expires_at:
+            abort(410)
+
     client_ip = get_client_ip()
 
-    # Check visibility
-    if image['visibility'] == 'private':
-        allowed_ips = image['allowed_ips'].split(',') if image['allowed_ips'] else []
-        if client_ip not in allowed_ips and client_ip != image['owner_ip']:
-            abort(403)
-
-    # Check one-time access
-    if image['one_time'] and image['view_count'] > 0:
-        abort(410)
+    # Check visibility - owner always has access
+    if client_ip != image['owner_ip']:
+        if image['visibility'] == 'whitelist' or image['visibility'] == 'private':
+            # Only allowed IPs can view (private is legacy, treated as whitelist)
+            allowed_ips = [ip.strip() for ip in image['allowed_ips'].split(',') if ip.strip()] if image['allowed_ips'] else []
+            if client_ip not in allowed_ips:
+                abort(403)
+        elif image['visibility'] == 'blacklist':
+            # Everyone except blocked IPs can view
+            blocked_ips = [ip.strip() for ip in image['blocked_ips'].split(',') if ip.strip()] if image['blocked_ips'] else []
+            if client_ip in blocked_ips:
+                abort(403)
+        # else: visibility == 'public', allow access
 
     # Update view count
     conn = get_db()
@@ -146,18 +158,27 @@ def update_visibility(image_id):
 
     visibility = data.get('visibility', 'public')
     allowed_ips = data.get('allowed_ips', '')
+    blocked_ips = data.get('blocked_ips', '')
+
+    # Validate visibility value
+    if visibility not in ['public', 'whitelist', 'blacklist', 'private']:
+        conn.close()
+        return jsonify({'error': 'Invalid visibility value'}), 400
+
+    # Generate new share token when settings change
+    new_token = secrets.token_urlsafe(16)
 
     conn.execute(
-        'UPDATE images SET visibility = ?, allowed_ips = ? WHERE id = ?',
-        (visibility, allowed_ips, image_id)
+        'UPDATE images SET visibility = ?, allowed_ips = ?, blocked_ips = ?, share_token = ? WHERE id = ?',
+        (visibility, allowed_ips, blocked_ips, new_token, image_id)
     )
     conn.commit()
     conn.close()
 
-    return jsonify({'success': True})
+    return jsonify({'success': True, 'new_token': new_token})
 
-@app.route('/api/images/<int:image_id>/one-time', methods=['PUT'])
-def set_one_time(image_id):
+@app.route('/api/images/<int:image_id>/expiration', methods=['PUT'])
+def set_expiration(image_id):
     client_ip = get_client_ip()
     data = request.json
 
@@ -168,12 +189,19 @@ def set_one_time(image_id):
         conn.close()
         return jsonify({'error': 'Unauthorized'}), 403
 
-    one_time = 1 if data.get('one_time') else 0
-    conn.execute('UPDATE images SET one_time = ? WHERE id = ?', (one_time, image_id))
+    minutes = data.get('minutes', 0)
+    expires_at = None
+    if minutes > 0:
+        expires_at = datetime.now() + timedelta(minutes=minutes)
+
+    # Generate new share token when settings change
+    new_token = secrets.token_urlsafe(16)
+
+    conn.execute('UPDATE images SET expires_at = ?, share_token = ? WHERE id = ?', (expires_at, new_token, image_id))
     conn.commit()
     conn.close()
 
-    return jsonify({'success': True})
+    return jsonify({'success': True, 'new_token': new_token})
 
 @app.route('/api/images/<int:image_id>/toggle-active', methods=['PUT'])
 def toggle_active(image_id):
@@ -193,6 +221,220 @@ def toggle_active(image_id):
     conn.close()
 
     return jsonify({'success': True})
+
+@app.route('/api/ip-nicknames', methods=['GET'])
+def get_ip_nicknames():
+    client_ip = get_client_ip()
+    conn = get_db()
+    nicknames = conn.execute(
+        'SELECT * FROM ip_nicknames WHERE owner_ip = ? ORDER BY nickname',
+        (client_ip,)
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(n) for n in nicknames])
+
+@app.route('/api/ip-nicknames', methods=['POST'])
+def create_ip_nickname():
+    client_ip = get_client_ip()
+    data = request.json
+    ip_address = data.get('ip_address', '').strip()
+    nickname = data.get('nickname', '').strip()
+
+    if not ip_address or not nickname:
+        return jsonify({'error': 'IP address and nickname are required'}), 400
+
+    conn = get_db()
+    try:
+        conn.execute(
+            'INSERT INTO ip_nicknames (owner_ip, ip_address, nickname) VALUES (?, ?, ?)',
+            (client_ip, ip_address, nickname)
+        )
+        conn.commit()
+        nickname_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        conn.close()
+        return jsonify({'success': True, 'id': nickname_id})
+    except sqlite3.IntegrityError:
+        conn.close()
+        return jsonify({'error': 'Nickname for this IP already exists'}), 400
+
+@app.route('/api/ip-nicknames/<int:nickname_id>', methods=['PUT'])
+def update_ip_nickname(nickname_id):
+    client_ip = get_client_ip()
+    data = request.json
+
+    conn = get_db()
+    nickname = conn.execute('SELECT * FROM ip_nicknames WHERE id = ?', (nickname_id,)).fetchone()
+
+    if not nickname or nickname['owner_ip'] != client_ip:
+        conn.close()
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    new_nickname = data.get('nickname', '').strip()
+    if not new_nickname:
+        conn.close()
+        return jsonify({'error': 'Nickname is required'}), 400
+
+    conn.execute('UPDATE ip_nicknames SET nickname = ? WHERE id = ?', (new_nickname, nickname_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
+
+@app.route('/api/ip-nicknames/<int:nickname_id>', methods=['DELETE'])
+def delete_ip_nickname(nickname_id):
+    client_ip = get_client_ip()
+    conn = get_db()
+    nickname = conn.execute('SELECT * FROM ip_nicknames WHERE id = ?', (nickname_id,)).fetchone()
+
+    if not nickname or nickname['owner_ip'] != client_ip:
+        conn.close()
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    conn.execute('DELETE FROM ip_nicknames WHERE id = ?', (nickname_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
+
+@app.route('/api/ip-groups', methods=['GET'])
+def get_ip_groups():
+    client_ip = get_client_ip()
+    conn = get_db()
+    groups = conn.execute(
+        'SELECT * FROM ip_groups WHERE owner_ip = ? ORDER BY group_name',
+        (client_ip,)
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(g) for g in groups])
+
+@app.route('/api/ip-groups', methods=['POST'])
+def create_ip_group():
+    client_ip = get_client_ip()
+    data = request.json
+    group_name = data.get('group_name', '').strip()
+    ip_addresses = data.get('ip_addresses', '').strip()
+
+    if not group_name or not ip_addresses:
+        return jsonify({'error': 'Group name and IP addresses are required'}), 400
+
+    conn = get_db()
+    try:
+        conn.execute(
+            'INSERT INTO ip_groups (owner_ip, group_name, ip_addresses) VALUES (?, ?, ?)',
+            (client_ip, group_name, ip_addresses)
+        )
+        conn.commit()
+        group_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        conn.close()
+        return jsonify({'success': True, 'id': group_id})
+    except sqlite3.IntegrityError:
+        conn.close()
+        return jsonify({'error': 'Group with this name already exists'}), 400
+
+@app.route('/api/ip-groups/<int:group_id>', methods=['PUT'])
+def update_ip_group(group_id):
+    client_ip = get_client_ip()
+    data = request.json
+
+    conn = get_db()
+    group = conn.execute('SELECT * FROM ip_groups WHERE id = ?', (group_id,)).fetchone()
+
+    if not group or group['owner_ip'] != client_ip:
+        conn.close()
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    group_name = data.get('group_name', '').strip()
+    ip_addresses = data.get('ip_addresses', '').strip()
+
+    if not group_name or not ip_addresses:
+        conn.close()
+        return jsonify({'error': 'Group name and IP addresses are required'}), 400
+
+    conn.execute(
+        'UPDATE ip_groups SET group_name = ?, ip_addresses = ? WHERE id = ?',
+        (group_name, ip_addresses, group_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
+
+@app.route('/api/ip-groups/<int:group_id>', methods=['DELETE'])
+def delete_ip_group(group_id):
+    client_ip = get_client_ip()
+    conn = get_db()
+    group = conn.execute('SELECT * FROM ip_groups WHERE id = ?', (group_id,)).fetchone()
+
+    if not group or group['owner_ip'] != client_ip:
+        conn.close()
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    conn.execute('DELETE FROM ip_groups WHERE id = ?', (group_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
+
+@app.route('/api/images/<int:image_id>/expiration', methods=['GET'])
+def get_expiration(image_id):
+    client_ip = get_client_ip()
+    conn = get_db()
+    image = conn.execute('SELECT expires_at FROM images WHERE id = ?', (image_id,)).fetchone()
+
+    if not image or conn.execute('SELECT owner_ip FROM images WHERE id = ?', (image_id,)).fetchone()['owner_ip'] != client_ip:
+        conn.close()
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    conn.close()
+    return jsonify({'expires_at': image['expires_at']})
+
+@app.route('/api/images/<int:image_id>/allowed-ips', methods=['GET'])
+def get_image_allowed_ips(image_id):
+    client_ip = get_client_ip()
+    conn = get_db()
+    image = conn.execute('SELECT * FROM images WHERE id = ?', (image_id,)).fetchone()
+
+    if not image or image['owner_ip'] != client_ip:
+        conn.close()
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    allowed_ips = image['allowed_ips'].split(',') if image['allowed_ips'] else []
+
+    # Get nicknames for allowed IPs
+    allowed_ip_list = []
+    for ip in allowed_ips:
+        ip = ip.strip()
+        if ip:
+            nickname_row = conn.execute(
+                'SELECT nickname FROM ip_nicknames WHERE owner_ip = ? AND ip_address = ?',
+                (client_ip, ip)
+            ).fetchone()
+            allowed_ip_list.append({
+                'ip': ip,
+                'nickname': nickname_row['nickname'] if nickname_row else None
+            })
+
+    # Process blocked IPs
+    blocked_ips = image['blocked_ips'].split(',') if image['blocked_ips'] else []
+    blocked_ip_list = []
+    for ip in blocked_ips:
+        ip = ip.strip()
+        if ip:
+            nickname_row = conn.execute(
+                'SELECT nickname FROM ip_nicknames WHERE owner_ip = ? AND ip_address = ?',
+                (client_ip, ip)
+            ).fetchone()
+            blocked_ip_list.append({
+                'ip': ip,
+                'nickname': nickname_row['nickname'] if nickname_row else None
+            })
+
+    conn.close()
+    return jsonify({
+        'visibility': image['visibility'],
+        'allowed_ips': allowed_ip_list,
+        'blocked_ips': blocked_ip_list
+    })
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
