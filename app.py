@@ -1,13 +1,17 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, abort
+from flask import Flask, render_template, request, jsonify, send_from_directory, abort, send_file
 import os
 from werkzeug.utils import secure_filename
 from PIL import Image
 import io
 import base64
 import secrets
+import sqlite3
 from datetime import datetime, timedelta
+import argparse
+import sys
 from config import Config
 from models import init_db, create_image, get_image_by_token, get_db
+from crypto_utils import init_crypto, get_crypto
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -67,7 +71,17 @@ def upload():
         timestamp = str(int(os.times().elapsed * 1000000))
         filename = f"{timestamp}_{filename}"
         filepath = os.path.join(Config.UPLOAD_FOLDER, filename)
-        file.save(filepath)
+
+        # Read file data
+        file_data = file.read()
+
+        # Encrypt the file data
+        crypto = get_crypto()
+        encrypted_data = crypto.encrypt_file(file_data)
+
+        # Save encrypted data to disk
+        with open(filepath, 'wb') as f:
+            f.write(encrypted_data)
 
         share_token = create_image(filename, client_ip)
         return jsonify({
@@ -120,7 +134,21 @@ def view_image(token):
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
-    return send_from_directory(Config.UPLOAD_FOLDER, filename)
+    filepath = os.path.join(Config.UPLOAD_FOLDER, filename)
+
+    # Read encrypted file
+    with open(filepath, 'rb') as f:
+        encrypted_data = f.read()
+
+    # Decrypt the file data
+    crypto = get_crypto()
+    decrypted_data = crypto.decrypt_file(encrypted_data)
+
+    # Send decrypted data
+    return send_file(
+        io.BytesIO(decrypted_data),
+        mimetype='image/' + filename.rsplit('.', 1)[1].lower()
+    )
 
 @app.route('/api/images/<int:image_id>', methods=['DELETE'])
 def delete_image(image_id):
@@ -437,4 +465,24 @@ def get_image_allowed_ips(image_id):
     })
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Image Share Server with encryption')
+    parser.add_argument('--password', type=str, required=True,
+                        help='Encryption password for storing images')
+    parser.add_argument('--host', type=str, default='0.0.0.0',
+                        help='Host to bind to (default: 0.0.0.0)')
+    parser.add_argument('--port', type=int, default=5000,
+                        help='Port to bind to (default: 5000)')
+
+    args = parser.parse_args()
+
+    # Initialize encryption
+    try:
+        init_crypto(args.password)
+        print(f"✓ Encryption initialized successfully")
+        print(f"✓ Server starting on {args.host}:{args.port}")
+    except Exception as e:
+        print(f"✗ Failed to initialize encryption: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    app.run(host=args.host, port=args.port, debug=True)

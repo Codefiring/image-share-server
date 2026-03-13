@@ -1,9 +1,10 @@
 # Image Share Server
 
-A Flask-based local network image sharing service designed for LAN environments. Share images with flexible access control including IP whitelisting, blacklisting, and timer-based expiration.
+A Flask-based local network image sharing service designed for LAN environments. Share images with flexible access control including IP whitelisting, blacklisting, and timer-based expiration. **All uploaded images are encrypted at rest** using a password-based encryption system.
 
 ## Features
 
+- **Encrypted Storage**: Images are encrypted before storage using AES-256 encryption
 - **Clipboard Upload**: Paste images directly from clipboard
 - **Flexible Access Control**:
   - Public sharing (anyone with link)
@@ -18,15 +19,17 @@ A Flask-based local network image sharing service designed for LAN environments.
 ## Quick Start
 
 ```bash
-# Start the server
-./start.sh
+# Start the server with encryption password
+./start.sh YOUR_SECURE_PASSWORD
 
 # Or manually
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-python app.py
+python app.py --password YOUR_SECURE_PASSWORD
 ```
+
+**Important**: You must provide the same password every time you start the server, otherwise previously uploaded images cannot be decrypted.
 
 Server runs at `http://0.0.0.0:5000` (accessible on local network).
 
@@ -72,6 +75,9 @@ Edit `config.py` to customize:
 
 ## Security Notes
 
+- **Encryption**: All images are encrypted at rest using Fernet (AES-256) with PBKDF2 key derivation
+- **Password Protection**: The encryption password is required at server startup and must be kept secure
+- **Automatic Decryption**: Images are decrypted transparently when accessed via share links
 - Designed for trusted local networks
 - No HTTPS/TLS (assumes LAN environment)
 - IP-based identification (no passwords)
@@ -82,6 +88,7 @@ Edit `config.py` to customize:
 - Python 3.7+
 - Flask
 - Pillow (PIL)
+- cryptography
 - SQLite3
 
 ## License
